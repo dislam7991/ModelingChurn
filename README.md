@@ -1,42 +1,43 @@
-# 🔌 Modeling Customer Churn for PowerCo (Energy Company)
+# 🔌 Modeling Customer Churn in an Energy Company
 
-## 📘 Overview
-A machine learning pipeline to predict SME customer churn for PowerCo, based on a fictional BCG Gamma case study. The model helps identify high-risk clients and inform discount-based retention strategies.
+This project builds an end-to-end machine learning pipeline to model churn behavior among SME customers of a fictional energy provider, PowerCo. Based on a case study inspired by BCG Gamma, it explores EDA, predictive modeling, and business strategy.
 
-## 🧠 Problem Statement
-PowerCo is losing SME customers at above-average rates. We aim to:
-- Predict churn risk
-- Understand drivers of churn
-- Evaluate if a 20% discount offer is financially sound
+## 📊 Problem Statement
+PowerCo is facing a high churn rate. This project aims to:
+- Predict churn probability
+- Identify key churn drivers
+- Recommend a strategy for offering a 20% retention discount
 
-## 📊 Data
-- `training_data.csv` — customer records (Jan 2016)
-- `training_output.csv` — churn labels (by Mar 2016)
-- `historical_data.csv` — 2015 price data
+## 🧠 Project Steps
+1. Data Cleaning & Merging
+2. Exploratory Data Analysis (EDA)
+3. Feature Engineering & Multicollinearity Reduction
+4. Class Balancing (SMOTE)
+5. Model Training: Logistic, Tree-based, SVM, XGBoost, etc.
+6. Evaluation: AUC, F1, Precision, Recall
+7. Strategic Recommendation
 
-## 🔍 Approach
-- Exploratory Data Analysis (EDA)
-- Feature engineering + date parsing
-- Handling class imbalance with SMOTE
-- Benchmarking multiple classifiers
-- Model evaluation via AUC, F1, Precision, Recall
-- Business recommendations
+## 🚀 Current Results (Round 1)
+| Model           | AUC   | F1-Score | Precision | Recall |
+|----------------|-------|----------|-----------|--------|
+| Random Forest  | 0.68  | 0.18     | 0.36      | 0.12   |
+| XGBoost        | 0.67  | 0.21     | 0.38      | 0.15   |
+| LightGBM       | 0.66  | 0.18     | 0.35      | 0.12   |
 
-## 📈 Model Performance
-| Model               | AUC   | F1   | Accuracy | Precision | Recall |
-|---------------------|-------|------|----------|-----------|--------|
-| Random Forest       |       | ...  | ...      | ...       | ...    |
-| Logistic Regression | ...   | ...  | ...      | ...       | ...    |
-| XGBoost             | ...   | ...  | ...      | ...       | ...    |
-
-## 🎯 Key Insights
-- Top churn drivers: 
-- Strong correlation between X and Y...
-- Channel Z has highest churn rate...
-
-## 💡 Business Recommendation
-If the discount is offered to top % of customers by churn probability:
-- Estimated retention: %
-- Net revenue impact: Z dollars
+## 📁 Repository Structure
+- `data/`: Raw & cleaned input CSVs
+- `notebooks/`: Jupyter notebooks
+- `src/`: Modular Python scripts
+- `outputs/`: Plots and predictions
 
 ## 🧪 How to Run
+```bash
+pip install -r requirements.txt
+python src/modeling.py
+```
+
+## 📌 To Do
+- Visualizations (EDA, VIF, ROC)
+- Feature selection
+- Model tuning
+- Revenue impact analysis
