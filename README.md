@@ -1,4 +1,4 @@
-# 🔌 Modeling Customer Churn in an Energy Company
+# Modeling Customer Churn in an Energy Company
 
 This project builds an end-to-end machine learning pipeline to model churn behavior among SME customers of a fictional energy provider, PowerCo. Based on a case study inspired by BCG Gamma, it explores EDA, predictive modeling, and business strategy.
 
