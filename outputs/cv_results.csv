@@ -1,0 +1,4 @@
+Model,CV_ROC_AUC_mean,CV_ROC_AUC_std
+Random Forest,0.6978,0.0077
+XGBoost,0.6917,0.011
+LightGBM,0.6899,0.0098
