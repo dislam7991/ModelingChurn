@@ -31,6 +31,11 @@ def b64(name):
         return "data:image/png;base64," + base64.b64encode(f.read()).decode()
 
 econ = summary["economics_full_population"]
+
+tune_path = os.path.join(OUT, "tuning_summary.json")
+tuning = json.load(open(tune_path)) if os.path.exists(tune_path) else None
+tres = (pd.read_csv(os.path.join(OUT, "tuning_results.csv")).set_index("Model")
+        if tuning else None)
 comp_rows = "".join(
     f"<tr><td>{r['Model']}</td><td>{r['ROC_AUC']:.3f}</td><td>{r['PR_AUC']:.3f}</td>"
     f"<td>{r['F1@0.5']:.2f}</td><td>{r['Precision@0.5']:.2f}</td>"
@@ -41,6 +46,69 @@ comp_rows = "".join(
 def fig_card(title, desc, name):
     return (f'<figure><h3>{title}</h3><p>{desc}</p>'
             f'<img src="{b64(name)}" alt="{title}"></figure>')
+
+
+def _tuned_rows():
+    return "".join(
+        f"<tr><td>{n}</td><td>{r['baseline_PR_AUC']:.3f}</td><td><b>{r['PR_AUC']:.3f}</b></td>"
+        f"<td>{r['delta_PR_AUC_vs_baseline']:+.3f}</td><td>{r['ROC_AUC']:.3f}</td>"
+        f"<td>{r['Brier_calibrated']:.3f}</td><td>{r['profit_threshold']:.2f}</td>"
+        f"<td>{r['Precision@thr']:.2f}</td><td>{r['Recall@thr']:.2f}</td>"
+        f"<td>{r['Fbeta0.5@thr']:.2f}</td><td>{r['uplift_vs_no_action_full_pop']:,.0f}</td></tr>"
+        for n, r in tres.iterrows())
+
+if tuning:
+    w = tuning["selected_model"]; h = tuning["holdout"]
+    tuning_section = f"""
+<h2>5 · Hyperparameter tuning (v2)</h2>
+<p>RandomizedSearchCV (5-fold stratified, scored on PR-AUC) over RF, LightGBM
+and XGBoost. SMOTE dropped in favour of native class weighting as a tunable
+knob; probabilities calibrated (isotonic) on train out-of-fold predictions;
+profit threshold chosen on train OOF; all numbers on the untouched holdout.
+Ranked by PR-AUC → profit → calibration → ROC-AUC.</p>
+<div class="kpis">
+  <div class="kpi"><div class="n">{w}</div><div class="l">Selected after tuning</div></div>
+  <div class="kpi"><div class="n">{h['PR_AUC']:.3f}</div><div class="l">PR-AUC (was {h['baseline_PR_AUC']:.3f})</div></div>
+  <div class="kpi"><div class="n">{h['ROC_AUC']:.3f}</div><div class="l">ROC-AUC (holdout)</div></div>
+  <div class="kpi"><div class="n good">+{h['uplift_vs_no_action_full_pop']:,.0f}</div><div class="l">Targeted uplift vs no-action /yr</div></div>
+  <div class="kpi"><div class="n good">+{h['uplift_vs_blanket_full_pop']:,.0f}</div><div class="l">Saved vs blanket /yr</div></div>
+</div>
+{fig_card("PR-AUC: baseline vs tuned", "Every model improves on its untuned v1 score; the no-skill line is the churn rate.", "tuning_pr_auc.png")}
+<table><thead><tr><th>Model</th><th>PR-AUC v1</th><th>PR-AUC tuned</th><th>Δ</th>
+<th>ROC-AUC</th><th>Brier</th><th>Thr</th><th>Prec</th><th>Recall</th><th>F0.5</th><th>Uplift /yr</th></tr></thead>
+<tbody>{_tuned_rows()}</tbody></table>
+{fig_card("Profit curves (calibrated, holdout)", "Realized annual net margin vs offer threshold for each tuned model; blanket (red) sits below no-action (grey).", "tuning_profit_curves.png")}
+{fig_card(f"Top churn drivers — tuned {w}", "Permutation importance (PR-AUC drop) for the selected tuned model.", "feature_importance_tuned.png")}
+"""
+else:
+    tuning_section = ""
+
+
+if tuning:
+    h = tuning["holdout"]; w = tuning["selected_model"]
+    reco_note = f"""<div class="note">
+Do <strong>not</strong> offer the 20% discount broadly — it destroys
+~{abs(econ['blanket']-econ['no_action']):,.0f}/yr because most customers would
+not have churned. Use the tuned <strong>{w}</strong>: offer the
+~{int(h['offered_full_pop']):,} customers it scores above the profit-optimal
+threshold ({h['profit_threshold']:.2f}, calibrated) <strong>and</strong> who carry
+positive margin, ranked by expected value <code>margin × (p − 0.20)</code>.
+That retains ~{int(h['retained_churners_full_pop']):,} real churners, adds
+~{h['uplift_vs_no_action_full_pop']:,.0f}/yr over doing nothing, and beats the
+blanket offer by ~{h['uplift_vs_blanket_full_pop']:,.0f}/yr. Scored verification
+set: <code>outputs/predictions/ml_case_test_output_filled.csv</code>.
+</div>"""
+else:
+    reco_note = f"""<div class="note">
+Do <strong>not</strong> offer the 20% discount broadly — it destroys
+~{abs(econ['blanket']-econ['no_action']):,.0f}/yr because most customers would
+not have churned. Target the ~{econ['offered']:,} customers the model scores
+above 20% churn probability <strong>and</strong> who carry positive margin;
+rank them by expected value <code>margin × (p − 0.20)</code>. This retains
+~{econ['retained_churners']} real churners and beats the blanket offer by
+~{econ['targeted']-econ['blanket']:,.0f}/yr. The scored verification set is in
+<code>outputs/predictions/ml_case_test_output_filled.csv</code>.
+</div>"""
 
 html = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
@@ -134,17 +202,10 @@ positive-margin customer only when churn probability p &gt; 0.20.</p>
 <tr><td>Oracle (perfect foresight)</td><td>1,572</td><td>{econ['oracle']:,.0f}</td><td class="good">+{econ['oracle']-econ['no_action']:,.0f}</td></tr>
 </tbody></table>
 
-<h2>5 · Recommendation</h2>
-<div class="note">
-Do <strong>not</strong> offer the 20% discount broadly — it destroys
-~{abs(econ['blanket']-econ['no_action']):,.0f}/yr because most customers would
-not have churned. Target the ~{econ['offered']:,} customers the model scores
-above 20% churn probability <strong>and</strong> who carry positive margin;
-rank them by expected value <code>margin × (p − 0.20)</code>. This retains
-~{econ['retained_churners']} real churners and beats the blanket offer by
-~{econ['targeted']-econ['blanket']:,.0f}/yr. The scored verification set is in
-<code>outputs/predictions/ml_case_test_output_filled.csv</code>.
-</div>
+{tuning_section}
+<h2>6 · Recommendation</h2>
+{reco_note}
+
 
 <p class="sub" style="margin-top:32px">Model AUC ~0.70: use the ranking plus the
 margin filter, not individual raw labels. Dollar figures assume every offered
