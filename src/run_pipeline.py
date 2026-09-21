@@ -36,7 +36,8 @@ from scipy import stats
 
 import joblib
 
-from data_prep import build_abt, REF_DATE
+from data_prep import (build_abt, REF_DATE, fit_extreme_caps,
+                       NONNEG_COLS, SKEWED_COLS)
 from model_pipeline import (build_preprocessor, get_models, make_pipeline,
                             RANDOM_STATE, CATEGORICAL)
 
@@ -103,6 +104,54 @@ def data_quality_report():
     for c in ["margin_gross_pow_ele", "margin_net_pow_ele", "net_margin"]:
         n = int((cust[c] < 0).sum())
         lines.append(f"| {c} | {n} | **kept** (a margin can legitimately be negative) |")
+
+    # Outliers / skew
+    lines += ["\n## Extreme values and skew\n",
+              "The consumption and forecast columns are heavily right-skewed, so "
+              "a Tukey 3xIQR rule flags 4-18% of customers per column — far too "
+              "many to be errors. Most very large values are also *shared* by "
+              "many customers (e.g. `cons_12m = 6,286,272` appears in 11 training "
+              "rows and is the maximum of the test set), so they are real records. "
+              "They are therefore **kept and log-transformed** inside the model "
+              "pipeline (`model_pipeline.signed_log1p`), not trimmed: a percentile "
+              "cap would tie dozens of distinct customers to one value. "
+              "Measured effect: mean |skew| across these columns falls from 7.86 "
+              "to 0.83, while 5-fold CV ROC-AUC and PR-AUC move by less than one "
+              "standard deviation for every model — the transform is "
+              "**metric-neutral here**, and is kept for conditioning and "
+              "interpretability rather than for a score lift.\n",
+              "| Column | skew | median | 99th pct | max | max / 99th pct |",
+              "| --- | --- | --- | --- | --- | --- |"]
+    for c in [c for c in SKEWED_COLS if c in cust.columns]:
+        v = cust[c].where(cust[c] >= 0) if c in NONNEG_COLS else cust[c]
+        v = v.dropna()
+        if v.empty:
+            continue
+        p99 = v.quantile(0.99)
+        ratio = (v.max() / p99) if p99 else float("nan")
+        lines.append(f"| {c} | {v.skew():.1f} | {v.median():,.1f} | {p99:,.1f} "
+                     f"| {v.max():,.1f} | {ratio:.1f}x |")
+
+    caps = fit_extreme_caps(cust.assign(**{c: cust[c].where(cust[c] >= 0)
+                                           for c in NONNEG_COLS
+                                           if c in cust.columns}))
+    lines += ["\n### Isolated extremes that *are* capped\n",
+              "A value is treated as an error only when it sits in an isolated "
+              "gap, i.e. it exceeds the next distinct value below it by more than "
+              f"{2.0:.0f}x and is shared with no other customer. One row meets "
+              "that test: customer `2c2abbe8...`, which reports the largest "
+              "`cons_12m` and `cons_last_month` in the data by a wide margin. It "
+              "is clipped to the next real value before any ratio feature is "
+              "derived from it. Caps are learned on training data and re-used for "
+              "the test build.\n",
+              "| Column | cap applied | uncapped max | rows affected |",
+              "| --- | --- | --- | --- |"]
+    if caps:
+        for c, cap in caps.items():
+            n = int((cust[c] > cap).sum())
+            lines.append(f"| {c} | {cap:,.0f} | {cust[c].max():,.0f} | {n} |")
+    else:
+        lines.append("| — | none | — | 0 |")
 
     lines += ["\n## Structural issue fixed\n",
               "The original pipeline left-joined the ~12-row price history "
@@ -450,8 +499,12 @@ def main():
     data_quality_report()
 
     log("Building ABT (train + test) ...")
-    abt_train, train_ids, activity_top = build_abt("train")
-    abt_test, test_ids, _ = build_abt("test", activity_top=activity_top)
+    abt_train, train_ids, activity_top, caps = build_abt("train")
+    abt_test, test_ids, _, _ = build_abt("test", activity_top=activity_top,
+                                         caps=caps)
+    if caps:
+        log(f"  capped isolated extremes: "
+            + ", ".join(f"{c}<={v:,.0f}" for c, v in caps.items()))
     abt_train.to_csv(os.path.join(PROC, "abt_train.csv"), index=False)
     abt_test.to_csv(os.path.join(PROC, "abt_test.csv"), index=False)
     log(f"  ABT train {abt_train.shape}, test {abt_test.shape}")

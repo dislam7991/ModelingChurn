@@ -30,6 +30,42 @@ DATE_COLS = ["date_activ", "date_end", "date_first_activ",
 NONNEG_COLS = ["cons_12m", "cons_gas_12m", "cons_last_month", "imp_cons",
                "forecast_cons", "forecast_cons_12m", "forecast_cons_year"]
 
+# Heavily right-skewed columns (skew 5-9 on the raw training data). These are
+# log-transformed inside the *modelling* pipeline (model_pipeline.signed_log1p),
+# never here: the ABT deliberately keeps real units so the discount economics
+# and the client-question report stay in currency/kWh terms.
+# Selection rule: raw skew > +2 *and* the log measurably reduces |skew|. Every
+# column below was checked against both; see the table in the data-quality
+# report, which is regenerated from the data on each run.
+SKEWED_COLS = [
+    # raw, non-negative (raw skew 3.5 - 12)
+    "cons_12m", "cons_gas_12m", "cons_last_month", "imp_cons",
+    "forecast_cons", "forecast_cons_12m", "forecast_cons_year",
+    "forecast_meter_rent_12m", "forecast_base_bill_ele",
+    "forecast_base_bill_year", "forecast_bill_12m",
+    # net margin: raw skew 21, and ~97 legitimately negative values, so the
+    # transform has to be a *signed* log rather than a plain log1p.
+    "net_margin",
+    # engineered ratios derived from the columns above
+    "cons_per_product", "recent_cons_ratio",
+]
+
+# Deliberately NOT log-transformed, each for a measured reason:
+#   margin_gross_pow_ele  raw skew 1.05 -- not skewed; the log would push it to
+#                         -2.16 because ~1,315 values are <= 0.
+#   margin_net_pow_ele    raw skew -3.13 -- *left*-skewed, so a right-skew fix
+#                         does not apply (the log only moves it to -2.37).
+#   net_margin_per_cons   raw skew 110, but the values sit around 0.01, where
+#                         log1p(x) ~= x and therefore does almost nothing. Its
+#                         tail comes from a handful of customers with an
+#                         implausibly small cons_12m denominator (3-47 kWh for a
+#                         whole year), which is a separate data-quality question
+#                         from the high-end outliers handled here.
+
+# Isolated-extreme rule: a top value is treated as an error when it exceeds the
+# next distinct value below it by more than this factor (see fit_extreme_caps).
+EXTREME_GAP_FACTOR = 2.0
+
 
 def aggregate_price_history(hist: pd.DataFrame) -> pd.DataFrame:
     """Collapse the 2015 monthly price history to one row per customer.
@@ -85,6 +121,51 @@ def _clean_customer(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def fit_extreme_caps(df: pd.DataFrame, cols=None,
+                     gap_factor: float = EXTREME_GAP_FACTOR) -> dict:
+    """Learn a cap for values sitting in an isolated gap above the rest.
+
+    Most very large consumption values are *shared* by many customers: e.g.
+    ``cons_12m == 6_286_272`` appears in 11 training rows and is also the maximum
+    of the test set, so it is a real (if repeated) record, not a typo. Capping at
+    a fixed percentile would flatten dozens of genuinely distinct customers onto
+    one value.
+
+    One row is different. Customer ``2c2abbe8...`` reports cons_12m = 16,097,108
+    and cons_last_month = 4,538,720 — 2.6x and 5.9x the next distinct value, and
+    shared with no one else. That is the profile of a data error.
+
+    This walks each column's distinct values downwards while every value is more
+    than ``gap_factor`` times the one below it, and caps those isolated values to
+    the first value that is *not* isolated. Fitted on training data only and
+    passed to the test build, so nothing crosses the split.
+    """
+    cols = NONNEG_COLS if cols is None else cols
+    caps: dict[str, float] = {}
+    for c in cols:
+        if c not in df.columns:
+            continue
+        vals = np.sort(df[c].dropna().unique())[::-1]
+        if len(vals) < 2:
+            continue
+        i = 0
+        while (i + 1 < len(vals) and vals[i + 1] > 0
+               and vals[i] > gap_factor * vals[i + 1]):
+            i += 1
+        if i:
+            caps[c] = float(vals[i])
+    return caps
+
+
+def apply_extreme_caps(df: pd.DataFrame, caps: dict) -> pd.DataFrame:
+    """Clip the isolated extremes identified by :func:`fit_extreme_caps`."""
+    df = df.copy()
+    for c, cap in caps.items():
+        if c in df.columns:
+            df[c] = df[c].clip(upper=cap)
+    return df
+
+
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add contract-timing, consumption, margin, and stickiness features."""
     df = df.copy()
@@ -130,12 +211,13 @@ def reduce_activity_cardinality(df: pd.DataFrame, top: pd.Index | None = None,
     return df, top
 
 
-def build_abt(kind: str = "train", activity_top=None):
+def build_abt(kind: str = "train", activity_top=None, caps=None):
     """Build the analytics base table: one row per customer.
 
-    kind='train' returns (abt_with_churn, ids, activity_top).
-    kind='test'  returns (abt_without_label, ids, activity_top) and requires
-    the activity_top learned on training.
+    kind='train' returns (abt_with_churn, ids, activity_top, caps).
+    kind='test'  returns (abt_without_label, ids, activity_top, caps) and
+    requires the activity_top *and* caps learned on training, so that no
+    test-set information influences the cleaning rules.
     """
     if kind == "train":
         cust = pd.read_csv(os.path.join(TRAIN, "ml_case_training_data.csv"))
@@ -155,6 +237,11 @@ def build_abt(kind: str = "train", activity_top=None):
     assert len(df) == len(cust), "ABT join changed row count -- not 1 row/id!"
 
     df = _clean_customer(df)
+    # Cap isolated extreme consumption values before any ratio is derived from
+    # them, so a single bad row cannot distort the engineered features.
+    if caps is None:
+        caps = fit_extreme_caps(df)
+    df = apply_extreme_caps(df, caps)
     df = engineer_features(df)
     df, activity_top = reduce_activity_cardinality(df, top=activity_top)
 
@@ -165,15 +252,16 @@ def build_abt(kind: str = "train", activity_top=None):
         y = cust[["id"]].merge(out, on="id", how="left")["churn"].values
         df["churn"] = y
 
-    return df, ids, activity_top
+    return df, ids, activity_top, caps
 
 
 if __name__ == "__main__":
-    tr, ids, top = build_abt("train")
-    te, tids, _ = build_abt("test", activity_top=top)
+    tr, ids, top, caps = build_abt("train")
+    te, tids, _, _ = build_abt("test", activity_top=top, caps=caps)
     print("TRAIN ABT:", tr.shape, "unique customers:", ids.nunique())
     print("TEST  ABT:", te.shape, "unique customers:", tids.nunique())
     print("churn rate:", round(tr["churn"].mean(), 4))
     print("n features:", tr.shape[1] - 1)
     print("dtypes:\n", tr.dtypes.value_counts())
     print("any object cols:", list(tr.select_dtypes('object').columns))
+    print("extreme-value caps learned on training:", caps)
