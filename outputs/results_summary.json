@@ -1,0 +1,32 @@
+{
+  "best_model": "Random Forest",
+  "holdout_ROC_AUC": 0.6991765620948924,
+  "holdout_PR_AUC": 0.26445590688259746,
+  "cv_ROC_AUC_mean": 0.697808953938516,
+  "cv_ROC_AUC_std": 0.007697505733651891,
+  "discount_ev_threshold": 0.2,
+  "discount_empirical_threshold": 0.17,
+  "classification_threshold_f1": 0.140496055043202,
+  "economics_full_population": {
+    "no_action": 3095983.72,
+    "blanket": 2871000.832,
+    "targeted": 3119303.048,
+    "oracle": 3491366.9519999996,
+    "retained_churners": 260,
+    "offered": 824
+  },
+  "top_features": [
+    "margin_gross_pow_ele",
+    "margin_net_pow_ele",
+    "channel_sales",
+    "recent_cons_ratio",
+    "net_margin_per_cons",
+    "num_years_antig",
+    "price_p1_fix_change",
+    "activity_new",
+    "origin_up",
+    "price_p1_fix_std"
+  ],
+  "test_flagged_to_churn": 625,
+  "runtime_minutes": 5.3
+}

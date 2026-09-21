@@ -8,36 +8,48 @@ PowerCo is facing a high churn rate. This project aims to:
 - Identify key churn drivers
 - Recommend a strategy for offering a 20% retention discount
 
-## 🧠 Project Steps
-1. Data Cleaning & Merging
-2. Exploratory Data Analysis (EDA)
-3. Feature Engineering & Multicollinearity Reduction
-4. Class Balancing (SMOTE)
-5. Model Training: Logistic, Tree-based, SVM, XGBoost, etc.
-6. Evaluation: AUC, F1, Precision, Recall
-7. Strategic Recommendation
+## 🧠 Pipeline (rebuilt)
+1. **ABT** — aggregate 2015 price history per customer, then join one row per id (`src/data_prep.py`).
+2. **Cleaning** — negative consumption to missing, drop empty columns, cap `activity_new` cardinality.
+3. **Feature engineering** — tenure, months-to-renewal/end, price dynamics (year change, peak–offpeak spread), consumption/margin ratios.
+4. **Leakage-safe preprocessing** — impute + scale + one-hot, with SMOTE applied on train folds only (`src/model_pipeline.py`).
+5. **Model bake-off** — 10 classifiers compared, top models cross-validated.
+6. **Business evaluation** — calibrated probabilities; ranked by ROC-AUC / PR-AUC.
+7. **Discount economics** — expected-value targeting of the 20% offer.
 
-## 🚀 Current Results (Round 1)
-| Model           | AUC   | F1-Score | Precision | Recall |
-|----------------|-------|----------|-----------|--------|
-| Random Forest  | 0.68  | 0.18     | 0.36      | 0.12   |
-| XGBoost        | 0.67  | 0.21     | 0.38      | 0.15   |
-| LightGBM       | 0.66  | 0.18     | 0.35      | 0.12   |
+## 🚀 Results (holdout, sorted by ROC-AUC)
+| Model | ROC-AUC | PR-AUC | F1 | Precision | Recall |
+|-------|---------|--------|-----|-----------|--------|
+| **Random Forest** | **0.699** | 0.264 | 0.19 | 0.43 | 0.12 |
+| LightGBM | 0.697 | **0.306** | 0.27 | 0.52 | 0.18 |
+| XGBoost | 0.682 | 0.302 | 0.28 | 0.48 | 0.19 |
+| SVC | 0.664 | 0.230 | 0.25 | 0.17 | 0.52 |
+| Logistic Regression | 0.642 | 0.181 | 0.23 | 0.14 | 0.61 |
+
+Random Forest wins on ROC-AUC (CV 0.698 ± 0.008); LightGBM is competitive
+and leads on PR-AUC/calibration at a fraction of the cost. Full table:
+`outputs/model_comparison.csv`.
+
+**Discount economics (annual net margin, full population):** a **blanket
+20% discount destroys ~225k** vs doing nothing, because most customers
+would not have churned. A **targeted** offer (calibrated churn probability
+> 0.20 **and** positive margin) offers to ~824 customers, retains ~260 real
+churners, and beats the blanket offer by **~248k/year**. See
+`outputs/economics.md`.
 
 ## 📁 Repository Structure
-- `data/`: Raw & cleaned input CSVs
-- `notebooks/`: Jupyter notebooks
-- `src/`: Modular Python scripts
-- `outputs/`: Plots and predictions
+- `data/raw/`: source CSVs — `data/processed/`: generated ABT
+- `docs/`: problem brief, feature definitions, rubric, plan
+- `src/`: `data_prep.py`, `model_pipeline.py`, `run_pipeline.py`
+- `outputs/`: reports (`.md`), metrics (`.csv`), figures, predictions, `report.html`
 
 ## 🧪 How to Run
 ```bash
 pip install -r requirements.txt
-python src/modeling.py
+python src/run_pipeline.py   # builds ABT, runs bake-off, writes all outputs
 ```
 
-## 📌 To Do
-- Visualizations (EDA, VIF, ROC)
-- Feature selection
-- Model tuning
-- Revenue impact analysis
+## 📌 Next steps
+- Hyperparameter tuning of the top 2 models (RF / LightGBM)
+- SHAP for per-customer driver explanations
+- Deep-learning and GenAI approaches (rubric stages 5–6)
