@@ -1,0 +1,56 @@
+{
+  "selected_model": "XGBoost",
+  "ranking": [
+    "XGBoost",
+    "LightGBM",
+    "Random Forest"
+  ],
+  "holdout": {
+    "CV_PR_AUC_mean": 0.3214298900429667,
+    "CV_PR_AUC_std": 0.022858669416782378,
+    "ROC_AUC": 0.7122198599948146,
+    "PR_AUC": 0.36023260496139375,
+    "Brier_calibrated": 0.0765179917216301,
+    "profit_threshold": 0.16,
+    "F1@thr": 0.3727891156462585,
+    "Precision@thr": 0.40773809523809523,
+    "Recall@thr": 0.3433583959899749,
+    "Fbeta0.5@thr": 0.3930005737234653,
+    "offered_full_pop": 1316,
+    "retained_churners_full_pop": 540,
+    "uplift_vs_no_action_full_pop": 67121.11199999973,
+    "uplift_vs_blanket_full_pop": 292104.0,
+    "baseline_ROC_AUC": 0.6815,
+    "baseline_PR_AUC": 0.3023,
+    "search_seconds": 378.5,
+    "delta_PR_AUC_vs_baseline": 0.05793260496139374
+  },
+  "best_params": {
+    "subsample": 1.0,
+    "scale_pos_weight": 1,
+    "reg_lambda": 2,
+    "reg_alpha": 0,
+    "n_estimators": 800,
+    "min_child_weight": 1,
+    "max_depth": 8,
+    "max_delta_step": 1,
+    "learning_rate": 0.05,
+    "gamma": 0,
+    "colsample_bytree": 0.6
+  },
+  "profit_threshold_all_data": 0.18,
+  "top_features": [
+    "margin_net_pow_ele",
+    "margin_gross_pow_ele",
+    "pow_max",
+    "months_to_end",
+    "months_to_renewal",
+    "net_margin",
+    "cons_last_month",
+    "forecast_meter_rent_12m",
+    "cons_gas_12m",
+    "net_margin_per_cons"
+  ],
+  "test_flagged_to_churn": 275,
+  "runtime_minutes": 30.5
+}

@@ -98,3 +98,33 @@ customers scored and ranked by churn propensity, with a 0/1 flag
   year (per the brief) and use `net_margin` as the annual margin proxy.
 - Isotonic calibration is coarse at the extremes (a few probabilities pin to
   1.0); tuning + SHAP are the recommended next steps.
+
+<!-- v2-tuning:start -->
+## 9. Hyperparameter tuning (v2)
+
+**Method.** `RandomizedSearchCV` (5-fold stratified, scoring = PR-AUC) over
+Random Forest (30 configs), LightGBM (60) and XGBoost (60). No SMOTE: class
+imbalance is handled by the models' native weighting, and the weight itself is
+searched (`class_weight` / `scale_pos_weight ∈ {1, 3, ~9}`), per the XGBoost
+guidance to rebalance for ranking and *calibrate* for probability. The tuned
+model is isotonic-calibrated on train out-of-fold predictions, the profit
+threshold is picked on those train OOF probabilities, and all metrics are on the
+untouched holdout. Ranking: PR-AUC → profit uplift → Brier → ROC-AUC.
+
+| Model | PR-AUC v1 | PR-AUC tuned | Δ | ROC-AUC | Brier | Thr | Precision | Recall | F0.5 | Uplift vs no-action /yr |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **XGBoost** | 0.302 | **0.360** | +0.058 | 0.712 | 0.077 | 0.16 | 0.41 | 0.34 | 0.39 | 67,121 |
+| LightGBM | 0.306 | 0.355 | +0.049 | 0.705 | 0.077 | 0.17 | 0.40 | 0.30 | 0.37 | 44,713 |
+| Random Forest | 0.265 | 0.320 | +0.056 | 0.724 | 0.079 | 0.16 | 0.31 | 0.36 | 0.32 | 50,623 |
+
+**Selected model: XGBoost.** Best params: `subsample=1`, `scale_pos_weight=1`, `reg_lambda=2`, `reg_alpha=0`, `n_estimators=800`, `min_child_weight=1`, `max_depth=8`, `max_delta_step=1`, `learning_rate=0.05`, `gamma=0`, `colsample_bytree=0.6`.
+
+All three models improved on their untuned v1 PR-AUC.
+The winner lifts PR-AUC from 0.302 to **0.360** and raises the
+targeted-discount uplift to **~67,121/yr** vs no-action
+(v1 Random Forest: ~23,319/yr), while still beating the blanket offer by
+~292,104/yr. Top drivers for the tuned model:
+`margin_net_pow_ele`, `margin_gross_pow_ele`, `pow_max`, `months_to_end`, `months_to_renewal`, `net_margin`. Verification set re-scored with the
+tuned calibrated model (275 flagged at threshold
+0.18). Runtime 30.5 min.
+<!-- v2-tuning:end -->

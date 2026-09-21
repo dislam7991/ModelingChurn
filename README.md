@@ -37,6 +37,31 @@ would not have churned. A **targeted** offer (calibrated churn probability
 churners, and beats the blanket offer by **~248k/year**. See
 `outputs/economics.md`.
 
+<!-- v2-tuning:start -->
+## 🎯 Tuned results (v2 — RandomizedSearchCV, PR-AUC objective)
+
+SMOTE was replaced by native class weighting (RF `class_weight`, GBM
+`scale_pos_weight`) as a *tunable* hyperparameter; probabilities are isotonic-
+calibrated on train out-of-fold predictions; the profit threshold is chosen on
+train OOF; every number below is on the untouched 25% holdout. Models are
+ranked by **PR-AUC → profit uplift → Brier → ROC-AUC**.
+
+| Model | PR-AUC v1 | PR-AUC tuned | Δ | ROC-AUC | Brier | Thr | Precision | Recall | F0.5 | Uplift vs no-action /yr |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **XGBoost** | 0.302 | **0.360** | +0.058 | 0.712 | 0.077 | 0.16 | 0.41 | 0.34 | 0.39 | 67,121 |
+| LightGBM | 0.306 | 0.355 | +0.049 | 0.705 | 0.077 | 0.17 | 0.40 | 0.30 | 0.37 | 44,713 |
+| Random Forest | 0.265 | 0.320 | +0.056 | 0.724 | 0.079 | 0.16 | 0.31 | 0.36 | 0.32 | 50,623 |
+
+**Selected: XGBoost** — PR-AUC 0.360 (v1 0.302), ROC-AUC
+0.712. At the profit-optimal threshold 0.16 it
+offers the discount to ~1,316 customers, retains
+~540 real churners, and adds
+**~67,121/yr** over doing nothing
+(**~292,104/yr** better than a blanket offer).
+All three models improved on their v1 baseline.
+Full table: `outputs/tuning_results.csv`. Re-run: `python src/run_tuning.py`.
+<!-- v2-tuning:end -->
+
 ## 📁 Repository Structure
 - `data/raw/`: source CSVs — `data/processed/`: generated ABT
 - `docs/`: problem brief, feature definitions, rubric, plan
