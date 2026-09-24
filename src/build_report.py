@@ -110,6 +110,154 @@ rank them by expected value <code>margin × (p − 0.20)</code>. This retains
 <code>outputs/predictions/ml_case_test_output_filled.csv</code>.
 </div>"""
 
+# ---------------------------------------------------------------------------
+# v3: header reflects what is deployed now; v3 / acceptance / roadmap sections
+# ---------------------------------------------------------------------------
+from report_content import (load_state, calibration_note, roadmap, scenario,
+                            base_churn_rate, v3_history)
+
+_, _, v3 = load_state()
+
+
+def _kpi(n, label, cls=""):
+    return f'<div class="kpi"><div class="n {cls}">{n}</div><div class="l">{label}</div></div>'
+
+
+def _table(head, rows, cls="", left_cols=(0,)):
+    th = "".join(f'<th class="{"l" if i in left_cols else ""}">{h}</th>' for i, h in enumerate(head))
+    body = ""
+    for r in rows:
+        tr_cls, cells = (r[0], r[1]) if isinstance(r, tuple) else ("", r)
+        tds = "".join(f'<td class="{"l" if i in left_cols else ""}">{c}</td>' for i, c in enumerate(cells))
+        body += f'<tr class="{tr_cls}">{tds}</tr>'
+    return f'<table class="{cls}"><thead><tr>{th}</tr></thead><tbody>{body}</tbody></table>'
+
+
+if v3:
+    h3 = v3["holdout_v3"]
+    header_kpis = '<div class="kpis">' + "".join([
+        _kpi(f"{v3['deployed_config']}", f"Deployed model ({v3['calibration']} calibration)"),
+        _kpi(f"{h3['PR_AUC']:.3f}", "PR-AUC (holdout)"),
+        _kpi(f"{h3['ROC_AUC']:.3f}", "ROC-AUC (holdout)"),
+        _kpi(f"+{h3['uplift_vs_no_action_full_pop']:,.0f}", "Targeted uplift vs no action /yr", "good"),
+        _kpi(f"+{h3['uplift_vs_blanket_full_pop']:,.0f}", "Saved vs blanket discount /yr", "good"),
+    ]) + "</div>"
+elif tuning:
+    header_kpis = '<div class="kpis">' + "".join([
+        _kpi(tuning["selected_model"], "Deployed model (v2)"),
+        _kpi(f"{tuning['holdout']['PR_AUC']:.3f}", "PR-AUC (holdout)"),
+        _kpi(f"+{tuning['holdout']['uplift_vs_no_action_full_pop']:,.0f}", "Uplift vs no action /yr", "good"),
+    ]) + "</div>"
+else:
+    header_kpis = '<div class="kpis">' + _kpi(summary["best_model"], "Best model") + "</div>"
+
+if v3:
+    cv = pd.read_csv(os.path.join(OUT, "v3_cv_results.csv"), index_col=0)
+    ho = pd.read_csv(os.path.join(OUT, "v3_holdout.csv"), index_col=0)
+    cal = pd.read_csv(os.path.join(OUT, "v3_calibration.csv"), index_col=0)
+    audit = pd.read_csv(os.path.join(OUT, "data_audit.csv"))
+    sens = pd.DataFrame(v3["acceptance_scenarios"])
+    wc = v3["acceptance_worst_case"]
+
+    cv_rows = []
+    for n, x in cv.iterrows():
+        base = n == "XGB v2"
+        cv_rows.append(("hl" if base else "", [
+            n + (" (deployed)" if base else ""), f"{x['cv_pr_mean']:.4f} ± {x['cv_pr_std']:.4f}",
+            "—" if base else f"{x['delta_vs_base']:+.4f}",
+            "—" if base else f"{x['ci_low']:+.4f} to {x['ci_high']:+.4f}",
+            "—" if base else f"{x['p_holm']:.2f}", f"{x['holdout_pr_auc']:.4f}"]))
+    cv_table = _table(["Config", "CV PR-AUC (mean ± sd)", "Δ vs XGB v2", "95% CI (corrected)",
+                       "Holm p", "Holdout PR-AUC"], cv_rows, cls="plain")
+
+    ho_spec = [("PR-AUC", "PR_AUC", "{:.4f}"), ("ROC-AUC", "ROC_AUC", "{:.4f}"),
+               ("Brier (lower = better calibrated)", "Brier", "{:.4f}"),
+               ("Distinct scores (of 4,024)", "distinct_scores", "{:,.0f}"),
+               ("Profit threshold", "profit_threshold", "{:.2f}"),
+               ("Customers offered", "offered_full_pop", "{:,.0f}"),
+               ("Churners retained (all accept)", "retained_churners_full_pop", "{:,.0f}"),
+               ("Uplift vs no action /yr", "uplift_vs_no_action_full_pop", "{:,.0f}"),
+               ("Uplift vs blanket /yr", "uplift_vs_blanket_full_pop", "{:,.0f}")]
+    ho_table = _table(["Holdout"] + list(ho.index),
+                      [[lbl] + [f.format(v) for v in ho[col]] for lbl, col, f in ho_spec], cls="plain")
+    cal_table = _table(["Method", "Training cross-fit uplift", "Brier", "Log-loss", "PR-AUC", "Distinct scores"],
+                       [("hl" if m == v3["calibration"] else "",
+                         [m + (" (chosen)" if m == v3["calibration"] else ""),
+                          f"{r['crossfit_uplift_vs_no_action']:,.0f}", f"{r['brier']:.4f}",
+                          f"{r['log_loss']:.4f}", f"{r['pr_auc']:.4f}", f"{r['distinct_scores']:,.0f}"])
+                        for m, r in cal.iterrows()], cls="plain")
+    sens_table = _table(["Scenario", "Break-even p", "Threshold", "Offered", "Churners retained",
+                         "Churn after", "Uplift vs no action /yr"],
+                        [[s["scenario"], f"{s['breakeven_p']:.2f}", f"{s['threshold']:.2f}",
+                          f"{s['offered']:,.0f}", f"{s['expected_retained_churners']:,.0f}",
+                          f"{s['churn_rate_after']*100:.1f}%", f"{s['uplift_vs_no_action']:,.0f}"]
+                         for _, s in sens.iterrows()])
+    audit_table = _table(["Signal", "Fields found in the data"],
+                         [[r.signal, r.fields_found] for r in audit.itertuples()],
+                         cls="plain", left_cols=(0, 1))
+    rm_table = _table(["#", "Data to collect", "Why it matters here", "Effort"],
+                      [[a, b, c.replace("*", ""), d] for a, b, c, d in roadmap(v3)],
+                      cls="plain", left_cols=(1, 2))
+    half = scenario(v3, "Churners 50%")["uplift_vs_no_action"]
+
+    v3_section = f"""
+<h2>6 · v3 — Tier-1 improvements, tested honestly</h2>
+<p>Candidates, all with the v2-tuned hyperparameters: out-of-fold target encoding
+of the full 419-category <code>activity_new</code> (+TE), native categorical splits,
+and XGBoost + LightGBM blends. <strong>Pre-registered rule</strong> (fixed before any
+result was seen): {v3['decision_rule']}</p>
+{fig_card("Change in PR-AUC vs the deployed XGB v2",
+          f"Repeated {v3['cv_splits']}-split CV with a corrected paired t-test (Nadeau &amp; Bengio) and Holm correction. Every interval that crosses the dashed line is indistinguishable from no change.",
+          "v3_cv_delta.png")}
+{cv_table}
+<div class="note"><strong>Decision:</strong> {v3['decision_reason']} On the single
+holdout several candidates look better than XGB v2 — the repeated CV shows those
+gains are noise, which is exactly why one split is not enough.</div>
+
+<h3 style="margin-top:24px">Calibration — a defect fixed</h3>
+<p>v2 used isotonic calibration, whose step function tied customers together.
+{calibration_note(v3)}</p>
+{cal_table}
+{ho_table}
+
+<h2>7 · What if customers don't all accept?</h2>
+<p>The brief assumes every offered customer accepts. Here churners and stayers
+accept at separate rates; the threshold is re-chosen on training data for each
+scenario and evaluated on the holdout. The dangerous case is loyal customers
+pocketing the discount while customers who have already decided to leave decline it.</p>
+{fig_card("Uplift vs acceptance rate",
+          f"Blue: everyone accepts at the same rate. Orange: every stayer accepts (worst case). Uplift stays positive across the tested range ({'yes' if wc['profitable_across_tested_range'] else 'no'}) because the offer list shrinks as acceptance falls — but the value shrinks with it.",
+          "v3_acceptance.png")}
+{sens_table}
+
+<h2>8 · Data roadmap — why the model plateaus</h2>
+<p>The model is limited by its data, not its tuning. Churn barely varies with
+contract timing, and none of the behavioural signals that lift churn models
+elsewhere exist in this dataset.</p>
+{fig_card("Churn rate by months until contract end",
+          "Every bucket sits within about one point of the overall rate — contract expiry is not a strong trigger here.",
+          "v3_contract_timing.png")}
+{audit_table}
+<p><strong>Priorities</strong> — a recommendation, ranked by expected value and ease
+(judgement, not a computed result):</p>
+{rm_table}
+"""
+    reco_num = 9
+    reco_note = f"""<div class="note">
+Do <strong>not</strong> offer the 20% discount broadly — a blanket offer loses money.
+Use <strong>{v3['deployed_config']}</strong> ({v3['calibration']} calibration) and offer the
+discount to the ~{h3['offered_full_pop']:,} customers above the profit threshold
+({h3['profit_threshold']:.2f}) <strong>with positive margin</strong>, ranked by
+<code>margin × (p − 0.20)</code>. If all accept, that retains ~{h3['retained_churners_full_pop']:,}
+churners (churn {base_churn_rate()*100:.1f}% → {scenario(v3, 'All accept')['churn_rate_after']*100:.1f}%)
+and adds ~{h3['uplift_vs_no_action_full_pop']:,.0f}/yr. If only half of would-be churners
+accept while every stayer does, uplift falls to ~{half:,.0f}/yr — so
+<strong>launch it as a randomised pilot</strong> and collect the roadmap data before
+scaling. {v3_history(v3)[0].upper() + v3_history(v3)[1:]}.
+</div>"""
+else:
+    v3_section, reco_num = "", 6
+
 html = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -136,6 +284,9 @@ th,td{{text-align:right;padding:7px 10px;border-bottom:1px solid var(--line)}}
 th:first-child,td:first-child{{text-align:left}}
 thead th{{color:var(--muted);font-weight:600}}
 tbody tr:first-child td{{font-weight:700}}
+table.plain tbody tr:first-child td{{font-weight:400}}
+tr.hl td{{font-weight:700}}
+td.l,th.l{{text-align:left}}
 figure{{margin:20px 0;background:var(--card);border:1px solid var(--line);
 border-radius:12px;padding:16px}}
 figure img{{width:100%;height:auto;border-radius:8px;background:#fff}}
@@ -150,15 +301,9 @@ border-radius:6px;padding:12px 16px;color:var(--muted);font-size:.9rem}}
 <h1>PowerCo SME Churn — Results</h1>
 <p class="sub">Fictional BCG Gamma case study · every figure computed by the pipeline</p>
 
-<div class="kpis">
-  <div class="kpi"><div class="n">{summary['best_model']}</div><div class="l">Best model</div></div>
-  <div class="kpi"><div class="n">{summary['holdout_ROC_AUC']:.3f}</div><div class="l">ROC-AUC (holdout)</div></div>
-  <div class="kpi"><div class="n">{summary['cv_ROC_AUC_mean']:.3f}</div><div class="l">ROC-AUC (5-fold CV)</div></div>
-  <div class="kpi"><div class="n bad">−{abs(econ['blanket']-econ['no_action']):,.0f}</div><div class="l">Blanket discount vs no-action /yr</div></div>
-  <div class="kpi"><div class="n good">+{econ['targeted']-econ['blanket']:,.0f}</div><div class="l">Targeting saves vs blanket /yr</div></div>
-</div>
+{header_kpis}
 
-<h2>1 · Model bake-off</h2>
+<h2>1 · Model bake-off (v1)</h2>
 <p>Ten classifiers, stratified holdout, SMOTE on train folds only. Ranked by
 ROC-AUC; PR-AUC breaks ties (it matters most at a ~10% churn rate, where
 accuracy is misleading).</p>
@@ -168,7 +313,7 @@ accuracy is misleading).</p>
 <table><thead><tr><th>Model</th><th>ROC-AUC</th><th>PR-AUC</th><th>F1</th>
 <th>Precision</th><th>Recall</th></tr></thead><tbody>{comp_rows}</tbody></table>
 
-<h2>2 · Best model — quality of the scores</h2>
+<h2>2 · v1 best model — quality of the scores</h2>
 <div class="grid2">
 {fig_card("ROC & Precision-Recall", "Ranking quality of the calibrated Random Forest.", "roc_pr.png")}
 {fig_card("Calibration", "Predicted probability vs observed churn — used for the money decision.", "calibration.png")}
@@ -187,7 +332,7 @@ accuracy is misleading).</p>
           "channel_churn.png")}
 </div>
 
-<h2>4 · The 20% discount — economics</h2>
+<h2>4 · The 20% discount — economics (v1 model)</h2>
 <p>Offering trades full margin for 80% of margin but guarantees retention, so
 <code>EV(offer) − EV(no offer) = margin × (p − 0.20)</code>. Offer a
 positive-margin customer only when churn probability p &gt; 0.20.</p>
@@ -203,14 +348,16 @@ positive-margin customer only when churn probability p &gt; 0.20.</p>
 </tbody></table>
 
 {tuning_section}
-<h2>6 · Recommendation</h2>
+{v3_section}
+<h2>{reco_num} · Recommendation</h2>
 {reco_note}
 
 
-<p class="sub" style="margin-top:32px">Model AUC ~0.70: use the ranking plus the
-margin filter, not individual raw labels. Dollar figures assume every offered
-customer accepts and stays a year (per the brief) and use net_margin as the
-annual margin proxy.</p>
+<p class="sub" style="margin-top:32px">Model ROC-AUC ~0.71: use the ranking plus
+the margin filter, not individual raw labels. Headline dollar figures follow the
+brief's assumption that every offered customer accepts and stays a year (see the
+acceptance sensitivity for what happens when they don't) and use net_margin as
+the annual margin proxy.</p>
 </div></body></html>"""
 
 with open(os.path.join(OUT, "report.html"), "w") as f:

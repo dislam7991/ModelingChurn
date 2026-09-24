@@ -18,8 +18,7 @@ import matplotlib.pyplot as plt
 import joblib
 
 from sklearn.base import clone
-from sklearn.model_selection import train_test_split, cross_val_predict
-from sklearn.isotonic import IsotonicRegression
+from sklearn.model_selection import train_test_split
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import (roc_auc_score, average_precision_score,
                              brier_score_loss, f1_score, precision_score,
@@ -27,7 +26,7 @@ from sklearn.metrics import (roc_auc_score, average_precision_score,
 
 from data_prep import build_abt
 from model_pipeline import RANDOM_STATE
-from tuning import build_search, make_cv, SPACES
+from tuning import build_search, calibrate_oof, SPACES
 from economics import (profit_curve, best_profit_threshold, policy_summary)
 
 warnings.filterwarnings("ignore")
@@ -42,14 +41,6 @@ N_ITER_OVERRIDE = int(sys.argv[1]) if len(sys.argv) > 1 else None  # smoke tests
 
 def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
-
-
-def calibrate_oof(estimator, X_tr, y_tr):
-    """Isotonic calibrator fit on train out-of-fold raw probabilities."""
-    oof = cross_val_predict(estimator, X_tr, y_tr, cv=make_cv(),
-                            method="predict_proba", n_jobs=-1)[:, 1]
-    iso = IsotonicRegression(out_of_bounds="clip").fit(oof, y_tr)
-    return iso, iso.predict(oof)
 
 
 def main():

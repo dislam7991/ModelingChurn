@@ -65,16 +65,27 @@ Full table: `outputs/tuning_results.csv`. Re-run: `python src/run_tuning.py`.
 ## 📁 Repository Structure
 - `data/raw/`: source CSVs — `data/processed/`: generated ABT
 - `docs/`: problem brief, feature definitions, rubric, plan
-- `src/`: `data_prep.py`, `model_pipeline.py`, `run_pipeline.py`
+- `src/`:
+  - `data_prep.py` — ABT (one row per customer), cleaning, features
+  - `model_pipeline.py` — v1 preprocessing and the 10-model roster
+  - `tuning.py`, `v3_models.py` — v2 search spaces, calibration, v3 encodings and ensemble
+  - `economics.py` — discount economics, profit curve, acceptance sensitivity
+  - `run_pipeline.py` → `run_tuning.py` → `run_v3.py` — v1, v2, v3 runners
+  - `build_report.py`, `update_docs.py`, `report_content.py` — report and docs, generated from outputs
 - `outputs/`: reports (`.md`), metrics (`.csv`), figures, predictions, `report.html`
 
 ## 🧪 How to Run
 ```bash
 pip install -r requirements.txt
-python src/run_pipeline.py   # builds ABT, runs bake-off, writes all outputs
+cd src
+python run_pipeline.py   # v1: ABT, 10-model bake-off, client questions (~5 min)
+python run_tuning.py     # v2: RandomizedSearchCV of RF / LightGBM / XGBoost (~30 min)
+python run_v3.py         # v3: Tier-1 tests, calibration, acceptance sensitivity (~15 min)
+python update_docs.py && python build_report.py   # refresh README, RESULTS.md, report.html
 ```
 
 ## 📌 Next steps
-- Hyperparameter tuning of the top 2 models (RF / LightGBM)
+- Collect the data in the roadmap (`outputs/RESULTS.md` §12) — the model is data-limited, not tuning-limited
+- Run the discount as a randomised pilot to measure real acceptance and incremental retention
 - SHAP for per-customer driver explanations
 - Deep-learning and GenAI approaches (rubric stages 5–6)

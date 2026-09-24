@@ -85,9 +85,9 @@ tuned calibrated model ({t['test_flagged_to_churn']} flagged at threshold
 {END}"""
 
 
-def splice(path, block, insert_before=None):
+def splice(path, block, insert_before=None, start=START, end=END):
     s = open(path).read()
-    pat = re.compile(re.escape(START) + ".*?" + re.escape(END), re.S)
+    pat = re.compile(re.escape(start) + ".*?" + re.escape(end), re.S)
     if pat.search(s):
         s = pat.sub(lambda _: block, s)
     elif insert_before and insert_before in s:
@@ -97,6 +97,139 @@ def splice(path, block, insert_before=None):
     open(path, "w").write(s)
 
 
-splice(os.path.join(ROOT, "README.md"), readme_block, insert_before="## 📁 Repository Structure")
-splice(os.path.join(OUT, "RESULTS.md"), results_block)  # appended after Caveats
-print(f"docs updated: selected={w}, PR-AUC {h['PR_AUC']:.3f}, improved_all={improved}")
+def relabel(path, pairs):
+    """Idempotent heading/text replacements (skip if already applied)."""
+    s = open(path).read()
+    for old, new in pairs:
+        if new not in s and old in s:
+            s = s.replace(old, new, 1)
+    open(path, "w").write(s)
+
+
+README = os.path.join(ROOT, "README.md")
+RESULTS = os.path.join(OUT, "RESULTS.md")
+splice(README, readme_block, insert_before="## 📁 Repository Structure")
+splice(RESULTS, results_block)  # appended after Caveats
+
+# ---------------------------------------------------------------------------
+# v3 + current status (only once the v3 experiment has run)
+# ---------------------------------------------------------------------------
+from report_content import load_state, current_status, calibration_note, roadmap, scenario
+
+v1, v2, v3 = load_state()
+CS, CE = "<!-- current:start -->", "<!-- current:end -->"
+V3S, V3E = "<!-- v3:start -->", "<!-- v3:end -->"
+
+status = current_status(v1, v2, v3)
+splice(README, f"{CS}\n## ✅ Current status\n\n{status}\n{CE}",
+       insert_before="## 🚀", start=CS, end=CE)
+splice(RESULTS, f"{CS}\n## Current status\n\n{status}\n{CE}",
+       insert_before="## 1. Headline", start=CS, end=CE)
+
+relabel(RESULTS, [
+    ("All numbers below are computed by\n`src/run_pipeline.py`; nothing is hand-entered.",
+     "All numbers below are computed by\nthe pipeline scripts in `src/`; nothing is hand-entered."),
+    ("## 1. Headline\n", "## 1. Headline (v1 — superseded, see Current status)\n"),
+    ("## 7. Deliverable\n", "## 7. Deliverable (v1 — superseded, see Current status)\n"),
+])
+relabel(README, [("## 🚀 Results (holdout, sorted by ROC-AUC)",
+                  "## 🚀 v1 results (holdout, sorted by ROC-AUC)")])
+
+if v3:
+    cv = pd.read_csv(os.path.join(OUT, "v3_cv_results.csv"), index_col=0)
+    ho = pd.read_csv(os.path.join(OUT, "v3_holdout.csv"), index_col=0)
+    sens = pd.DataFrame(v3["acceptance_scenarios"])
+    audit = pd.read_csv(os.path.join(OUT, "data_audit.csv"))
+    ct = pd.read_csv(os.path.join(OUT, "contract_timing.csv")).query("feature == 'months_to_end'")
+
+    cv_rows = ["| Config | CV PR-AUC (mean ± sd) | Δ vs XGB v2 | 95% CI (corrected) | Holm p | Holdout PR-AUC |",
+               "|---|---|---|---|---|---|"]
+    for n, x in cv.iterrows():
+        base = n == "XGB v2"
+        cv_rows.append(f"| {'**'+n+'** (deployed)' if base else n} | {x['cv_pr_mean']:.4f} ± {x['cv_pr_std']:.4f} | "
+                       f"{'—' if base else f'{x.delta_vs_base:+.4f}'} | "
+                       f"{'—' if base else f'{x.ci_low:+.4f} to {x.ci_high:+.4f}'} | "
+                       f"{'—' if base else f'{x.p_holm:.2f}'} | {x['holdout_pr_auc']:.4f} |")
+    ho_rows = ["| | " + " | ".join(ho.index) + " |", "|---|" + "---|" * len(ho)]
+    for col, fmt in [("PR_AUC", "{:.4f}"), ("ROC_AUC", "{:.4f}"), ("Brier", "{:.4f}"),
+                     ("distinct_scores", "{:,.0f}"), ("profit_threshold", "{:.2f}"),
+                     ("offered_full_pop", "{:,.0f}"), ("retained_churners_full_pop", "{:,.0f}"),
+                     ("uplift_vs_no_action_full_pop", "{:,.0f}"), ("uplift_vs_blanket_full_pop", "{:,.0f}")]:
+        ho_rows.append(f"| {col} | " + " | ".join(fmt.format(v) for v in ho[col]) + " |")
+    s_rows = ["| Scenario | Break-even p | Threshold | Offered | Churners retained | Churn after | Uplift vs no action /yr |",
+              "|---|---|---|---|---|---|---|"]
+    for _, x in sens.iterrows():
+        s_rows.append(f"| {x['scenario']} | {x['breakeven_p']:.2f} | {x['threshold']:.2f} | {x['offered']:,.0f} | "
+                      f"{x['expected_retained_churners']:,.0f} | {x['churn_rate_after']*100:.1f}% | "
+                      f"{x['uplift_vs_no_action']:,.0f} |")
+    a_rows = ["| Signal | Fields found |", "|---|---|"] + \
+             [f"| {r.signal} | {r.fields_found} |" for r in audit.itertuples()]
+    ct_line = ", ".join(f"{r.bucket} months: {r.churn_rate*100:.1f}%" for r in ct.itertuples())
+    rm_rows = ["| # | Data to collect | Why it matters here | Effort |", "|---|---|---|---|"] + \
+              [f"| {a} | {b} | {c} | {d} |" for a, b, c, d in roadmap(v3)]
+    wc = v3["acceptance_worst_case"]
+
+    v3_results = f"""{V3S}
+## 10. v3 — Tier-1 improvements, tested honestly
+
+**Candidates** (all with the v2-tuned hyperparameters): out-of-fold target
+encoding of the full 419-category `activity_new` (`+TE`), native categorical
+splits (`native`), and XGBoost + LightGBM rank-average blends.
+
+**Pre-registered rule** (fixed before any result was seen): {v3['decision_rule']}
+
+{chr(10).join(cv_rows)}
+
+Repeated {v3['cv_splits']}-split CV on the training split; the corrected t-test
+(Nadeau & Bengio) accounts for overlapping training folds, and Holm corrects for
+testing {len(cv) - 1} candidates at once.
+
+**Decision:** {v3['decision_reason']} The single holdout is a warning: several
+candidates beat XGB v2 there, but the repeated CV shows those gains are noise.
+
+**Calibration — a defect fixed.** v2 used isotonic calibration, whose step
+function tied customers together. {calibration_note(v3)}
+
+{chr(10).join(ho_rows)}
+
+## 11. What if customers don't all accept?
+
+The brief assumes every offered customer accepts. Below, churners and stayers
+accept at separate rates; the threshold is re-optimised on training data for
+each scenario and evaluated on the holdout. The dangerous case is when loyal
+customers take the discount more readily than customers who have already
+decided to leave.
+
+{chr(10).join(s_rows)}
+
+Worst case (stayers always accept): targeting stays profitable across the whole
+tested range ({wc['tested_range'][0]:.0%}–{wc['tested_range'][1]:.0%} churner
+acceptance): {'yes' if wc['profitable_across_tested_range'] else 'no'}. The threshold
+tightens as acceptance falls, so the offer list shrinks rather than losing money,
+but the uplift shrinks with it.
+
+## 12. Data roadmap — why the model plateaus, and what to collect
+
+**Evidence.** Churn barely moves with contract timing ({ct_line}), and the
+dataset holds none of the behavioural signals that lift churn models elsewhere:
+
+{chr(10).join(a_rows)}
+
+**Priorities** (a recommendation — ranked by expected value and ease, a
+judgement rather than a computed result):
+
+{chr(10).join(rm_rows)}
+{V3E}"""
+    splice(RESULTS, v3_results, start=V3S, end=V3E)
+
+    readme_v3 = f"""{V3S}
+## 🧪 v3 — Tier-1 improvements (repeated CV, pre-registered rule)
+
+{v3['decision_reason']} {calibration_note(v3)} Full tables, the acceptance
+sensitivity and the data roadmap: `outputs/RESULTS.md` §10–12 and
+`outputs/report.html`. Re-run: `python src/run_v3.py`.
+{V3E}"""
+    splice(README, readme_v3, insert_before="## 📁 Repository Structure", start=V3S, end=V3E)
+
+print(f"docs updated: selected={w}, PR-AUC {h['PR_AUC']:.3f}, improved_all={improved}, "
+      f"v3={'yes' if v3 else 'no'}")

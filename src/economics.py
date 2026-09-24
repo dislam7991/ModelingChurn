@@ -63,3 +63,64 @@ def policy_summary(p, y, margin, thr) -> dict:
         uplift_vs_no_action=targeted - no_action,
         uplift_vs_blanket=targeted - blanket,
     )
+
+
+# ---------------------------------------------------------------------------
+# Acceptance-rate sensitivity
+# ---------------------------------------------------------------------------
+# The brief assumes every offered customer accepts. Relax that with separate
+# acceptance rates for would-be churners (a_churn) and would-be stayers
+# (a_stay). An offered customer who declines behaves as if not offered.
+# Per customer:  EV(offer) - EV(no offer)
+#   = m * [ (1-d) * p * a_churn  -  d * (1-p) * a_stay ]
+# so it pays to offer iff  p > d*a_stay / ((1-d)*a_churn + d*a_stay).
+# With a_churn = a_stay the break-even stays at d (0.20); the dangerous case is
+# a_stay > a_churn (loyal customers happily pocket a discount while customers
+# already signed with a competitor decline it).
+
+def breakeven_probability(a_churn, a_stay, discount=DISCOUNT) -> float:
+    den = (1 - discount) * a_churn + discount * a_stay
+    return 1.0 if den <= 0 else discount * a_stay / den
+
+
+def expected_margin(offered, y, margin, a_churn=1.0, a_stay=1.0,
+                    discount=DISCOUNT) -> float:
+    """Expected annual margin under partial acceptance (a=1 -> realized_margin)."""
+    offered = np.asarray(offered, bool); y = np.asarray(y); m = _m(margin)
+    base = np.where(y == 0, m, 0.0)                    # outcome if not offered
+    a = np.where(y == 1, a_churn, a_stay)
+    offer_val = a * (1 - discount) * m + (1 - a) * base
+    return float(np.where(offered, offer_val, base).sum())
+
+
+def acceptance_sensitivity(p_fit, y_fit, m_fit, p_eval, y_eval, m_eval,
+                           scenarios, scale=1.0) -> pd.DataFrame:
+    """Per scenario: pick the threshold on the *fit* data, evaluate on *eval*.
+
+    ``scenarios`` is an iterable of (label, a_churn, a_stay).
+    """
+    grid = np.linspace(0.0, 0.95, 96)
+    mf, me = _m(m_fit), _m(m_eval)
+    y_eval = np.asarray(y_eval); n = len(y_eval)
+    rows = []
+    for label, a_c, a_s in scenarios:
+        vals = [expected_margin((np.asarray(p_fit) >= t) & (mf > 0), y_fit, mf, a_c, a_s)
+                for t in grid]
+        thr = float(grid[int(np.argmax(vals))])
+        offered = (np.asarray(p_eval) >= thr) & (me > 0)
+        no_action = expected_margin(np.zeros(n, bool), y_eval, me, a_c, a_s)
+        blanket = expected_margin(np.ones(n, bool), y_eval, me, a_c, a_s)
+        targeted = expected_margin(offered, y_eval, me, a_c, a_s)
+        retained = a_c * int((offered & (y_eval == 1)).sum())
+        churners = int((y_eval == 1).sum())
+        rows.append(dict(
+            scenario=label, a_churn=a_c, a_stay=a_s,
+            breakeven_p=breakeven_probability(a_c, a_s), threshold=thr,
+            offered=int(offered.sum() * scale),
+            expected_retained_churners=retained * scale,
+            churn_rate_after=(churners - retained) / n,
+            uplift_vs_no_action=(targeted - no_action) * scale,
+            blanket_vs_no_action=(blanket - no_action) * scale,
+            uplift_vs_blanket=(targeted - blanket) * scale,
+        ))
+    return pd.DataFrame(rows)

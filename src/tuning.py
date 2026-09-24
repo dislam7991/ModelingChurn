@@ -17,7 +17,11 @@ Design (see docs/PLAN.md and the tuning plan):
 from __future__ import annotations
 from scipy.stats import randint
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
+from sklearn.model_selection import (RandomizedSearchCV, StratifiedKFold,
+                                     cross_val_predict)
+from sklearn.isotonic import IsotonicRegression
+from sklearn.linear_model import LogisticRegression
+import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
@@ -92,3 +96,50 @@ def build_search(name: str, X, n_iter: int | None = None) -> RandomizedSearchCV:
         scoring="average_precision", cv=make_cv(), refit=True,
         n_jobs=-1, random_state=RANDOM_STATE, verbose=0, error_score="raise",
     )
+
+
+def oof_proba(estimator, X, y):
+    """Raw out-of-fold churn probability for every training row."""
+    return cross_val_predict(estimator, X, y, cv=make_cv(),
+                             method="predict_proba", n_jobs=-1)[:, 1]
+
+
+class SigmoidCalibrator:
+    """Platt scaling on the logit of the raw probability.
+
+    Strictly monotone, so -- unlike isotonic regression, whose step function
+    ties many customers at the same value -- it preserves the model's ranking
+    exactly (PR-AUC / ROC-AUC unchanged by calibration).
+    """
+
+    @staticmethod
+    def _z(p):
+        p = np.clip(np.asarray(p, float), 1e-6, 1 - 1e-6)
+        return np.log(p / (1 - p)).reshape(-1, 1)
+
+    def fit(self, p, y):
+        self.lr_ = LogisticRegression(C=1e6, max_iter=1000).fit(self._z(p), y)
+        return self
+
+    def predict(self, p):
+        return self.lr_.predict_proba(self._z(p))[:, 1]
+
+
+def fit_calibrator(p, y, method: str = "isotonic"):
+    if method == "isotonic":
+        return IsotonicRegression(out_of_bounds="clip").fit(p, y)
+    if method == "sigmoid":
+        return SigmoidCalibrator().fit(p, y)
+    raise ValueError(method)
+
+
+def calibrate_oof(estimator, X_tr, y_tr, method: str = "isotonic"):
+    """Calibrator fit on train out-of-fold raw probabilities.
+
+    Returns (calibrator, calibrated OOF probabilities). The OOF predictions come
+    from models that never saw the row, so the calibrator (and any threshold
+    chosen on its output) is not fit on the model's own training fit.
+    """
+    oof = oof_proba(estimator, X_tr, y_tr)
+    cal = fit_calibrator(oof, y_tr, method)
+    return cal, cal.predict(oof)
