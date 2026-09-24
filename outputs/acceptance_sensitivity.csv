@@ -1,0 +1,8 @@
+scenario,a_churn,a_stay,breakeven_p,threshold,offered,expected_retained_churners,churn_rate_after,uplift_vs_no_action,blanket_vs_no_action,uplift_vs_blanket
+All accept (brief's assumption),1.0,1.0,0.2,0.21,1268,528.0,0.0664,64259.096,-224982.888,289241.984
+75% of everyone accepts,0.75,0.75,0.2,0.21,1268,396.0,0.0746,48194.322,-168737.166,216931.488
+50% of everyone accepts,0.5,0.5,0.2,0.21,1268,264.0,0.0828,32129.548,-112491.444,144620.992
+25% of everyone accepts,0.25,0.25,0.2,0.21,1268,132.0,0.091,16064.774,-56245.722,72310.496
+"Churners 75%, stayers 100%",0.75,1.0,0.25,0.26,792,303.0,0.0803,28047.704,-323536.352,351584.056
+"Churners 50%, stayers 100%",0.5,1.0,0.3333,0.33,428,142.0,0.0903,14842.416,-422089.816,436932.232
+"Churners 25%, stayers 100%",0.25,1.0,0.5,0.41,276,56.0,0.0957,7075.384,-520643.28,527718.664

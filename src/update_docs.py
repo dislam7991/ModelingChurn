@@ -114,7 +114,8 @@ splice(RESULTS, results_block)  # appended after Caveats
 # ---------------------------------------------------------------------------
 # v3 + current status (only once the v3 experiment has run)
 # ---------------------------------------------------------------------------
-from report_content import load_state, current_status, calibration_note, roadmap, scenario
+from report_content import (load_state, current_status, calibration_note, roadmap,
+                            scenario, worst_case_sentence, HOLDOUT_ROWS, THRESHOLD_NOTE)
 
 v1, v2, v3 = load_state()
 CS, CE = "<!-- current:start -->", "<!-- current:end -->"
@@ -150,12 +151,9 @@ if v3:
                        f"{'—' if base else f'{x.delta_vs_base:+.4f}'} | "
                        f"{'—' if base else f'{x.ci_low:+.4f} to {x.ci_high:+.4f}'} | "
                        f"{'—' if base else f'{x.p_holm:.2f}'} | {x['holdout_pr_auc']:.4f} |")
-    ho_rows = ["| | " + " | ".join(ho.index) + " |", "|---|" + "---|" * len(ho)]
-    for col, fmt in [("PR_AUC", "{:.4f}"), ("ROC_AUC", "{:.4f}"), ("Brier", "{:.4f}"),
-                     ("distinct_scores", "{:,.0f}"), ("profit_threshold", "{:.2f}"),
-                     ("offered_full_pop", "{:,.0f}"), ("retained_churners_full_pop", "{:,.0f}"),
-                     ("uplift_vs_no_action_full_pop", "{:,.0f}"), ("uplift_vs_blanket_full_pop", "{:,.0f}")]:
-        ho_rows.append(f"| {col} | " + " | ".join(fmt.format(v) for v in ho[col]) + " |")
+    ho_rows = ["| Holdout | " + " | ".join(ho.index) + " |", "|---|" + "---|" * len(ho)]
+    for label, col, fmt in HOLDOUT_ROWS:
+        ho_rows.append(f"| {label} | " + " | ".join(fmt.format(v) for v in ho[col]) + " |")
     s_rows = ["| Scenario | Break-even p | Threshold | Offered | Churners retained | Churn after | Uplift vs no action /yr |",
               "|---|---|---|---|---|---|---|"]
     for _, x in sens.iterrows():
@@ -164,7 +162,8 @@ if v3:
                       f"{x['uplift_vs_no_action']:,.0f} |")
     a_rows = ["| Signal | Fields found |", "|---|---|"] + \
              [f"| {r.signal} | {r.fields_found} |" for r in audit.itertuples()]
-    ct_line = ", ".join(f"{r.bucket} months: {r.churn_rate*100:.1f}%" for r in ct.itertuples())
+    ct_line = (", ".join(f"{r.bucket} months: {r.churn_rate*100:.1f}%" for r in ct.itertuples())
+               + f"; chi-square p = {ct['chi2_p_value'].iloc[0]:.2f}, not significant")
     rm_rows = ["| # | Data to collect | Why it matters here | Effort |", "|---|---|---|---|"] + \
               [f"| {a} | {b} | {c} | {d} |" for a, b, c, d in roadmap(v3)]
     wc = v3["acceptance_worst_case"]
@@ -202,11 +201,8 @@ decided to leave.
 
 {chr(10).join(s_rows)}
 
-Worst case (stayers always accept): targeting stays profitable across the whole
-tested range ({wc['tested_range'][0]:.0%}–{wc['tested_range'][1]:.0%} churner
-acceptance): {'yes' if wc['profitable_across_tested_range'] else 'no'}. The threshold
-tightens as acceptance falls, so the offer list shrinks rather than losing money,
-but the uplift shrinks with it.
+{worst_case_sentence(v3)} The threshold tightens as acceptance falls, so the
+offer list shrinks — and the uplift shrinks with it. {THRESHOLD_NOTE}
 
 ## 12. Data roadmap — why the model plateaus, and what to collect
 

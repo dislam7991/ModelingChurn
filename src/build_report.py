@@ -114,7 +114,8 @@ rank them by expected value <code>margin × (p − 0.20)</code>. This retains
 # v3: header reflects what is deployed now; v3 / acceptance / roadmap sections
 # ---------------------------------------------------------------------------
 from report_content import (load_state, calibration_note, roadmap, scenario,
-                            base_churn_rate, v3_history)
+                            base_churn_rate, v3_history, worst_case_sentence,
+                            HOLDOUT_ROWS, THRESHOLD_NOTE)
 
 _, _, v3 = load_state()
 
@@ -170,16 +171,9 @@ if v3:
     cv_table = _table(["Config", "CV PR-AUC (mean ± sd)", "Δ vs XGB v2", "95% CI (corrected)",
                        "Holm p", "Holdout PR-AUC"], cv_rows, cls="plain")
 
-    ho_spec = [("PR-AUC", "PR_AUC", "{:.4f}"), ("ROC-AUC", "ROC_AUC", "{:.4f}"),
-               ("Brier (lower = better calibrated)", "Brier", "{:.4f}"),
-               ("Distinct scores (of 4,024)", "distinct_scores", "{:,.0f}"),
-               ("Profit threshold", "profit_threshold", "{:.2f}"),
-               ("Customers offered", "offered_full_pop", "{:,.0f}"),
-               ("Churners retained (all accept)", "retained_churners_full_pop", "{:,.0f}"),
-               ("Uplift vs no action /yr", "uplift_vs_no_action_full_pop", "{:,.0f}"),
-               ("Uplift vs blanket /yr", "uplift_vs_blanket_full_pop", "{:,.0f}")]
     ho_table = _table(["Holdout"] + list(ho.index),
-                      [[lbl] + [f.format(v) for v in ho[col]] for lbl, col, f in ho_spec], cls="plain")
+                      [[lbl] + [f.format(v) for v in ho[col]] for lbl, col, f in HOLDOUT_ROWS],
+                      cls="plain")
     cal_table = _table(["Method", "Training cross-fit uplift", "Brier", "Log-loss", "PR-AUC", "Distinct scores"],
                        [("hl" if m == v3["calibration"] else "",
                          [m + (" (chosen)" if m == v3["calibration"] else ""),
@@ -199,6 +193,8 @@ if v3:
                       [[a, b, c.replace("*", ""), d] for a, b, c, d in roadmap(v3)],
                       cls="plain", left_cols=(1, 2))
     half = scenario(v3, "Churners 50%")["uplift_vs_no_action"]
+    ct_p = pd.read_csv(os.path.join(OUT, "contract_timing.csv")).query(
+        "feature == 'months_to_end'")["chi2_p_value"].iloc[0]
 
     v3_section = f"""
 <h2>6 · v3 — Tier-1 improvements, tested honestly</h2>
@@ -226,16 +222,17 @@ accept at separate rates; the threshold is re-chosen on training data for each
 scenario and evaluated on the holdout. The dangerous case is loyal customers
 pocketing the discount while customers who have already decided to leave decline it.</p>
 {fig_card("Uplift vs acceptance rate",
-          f"Blue: everyone accepts at the same rate. Orange: every stayer accepts (worst case). Uplift stays positive across the tested range ({'yes' if wc['profitable_across_tested_range'] else 'no'}) because the offer list shrinks as acceptance falls — but the value shrinks with it.",
+          f"Blue: everyone accepts at the same rate. Orange: every stayer accepts (worst case). {worst_case_sentence(v3)}",
           "v3_acceptance.png")}
 {sens_table}
+<p class="sub">{THRESHOLD_NOTE}</p>
 
 <h2>8 · Data roadmap — why the model plateaus</h2>
 <p>The model is limited by its data, not its tuning. Churn barely varies with
 contract timing, and none of the behavioural signals that lift churn models
 elsewhere exist in this dataset.</p>
 {fig_card("Churn rate by months until contract end",
-          "Every bucket sits within about one point of the overall rate — contract expiry is not a strong trigger here.",
+          f"Every bucket sits within about one point of the overall rate (chi-square p = {ct_p:.2f}, not significant) — contract expiry is not a churn trigger in this data.",
           "v3_contract_timing.png")}
 {audit_table}
 <p><strong>Priorities</strong> — a recommendation, ranked by expected value and ease
@@ -285,6 +282,7 @@ th:first-child,td:first-child{{text-align:left}}
 thead th{{color:var(--muted);font-weight:600}}
 tbody tr:first-child td{{font-weight:700}}
 table.plain tbody tr:first-child td{{font-weight:400}}
+@media(max-width:720px){{table{{display:block;overflow-x:auto;max-width:100%}}}}
 tr.hl td{{font-weight:700}}
 td.l,th.l{{text-align:left}}
 figure{{margin:20px 0;background:var(--card);border:1px solid var(--line);

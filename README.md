@@ -17,7 +17,13 @@ PowerCo is facing a high churn rate. This project aims to:
 6. **Business evaluation** — calibrated probabilities; ranked by ROC-AUC / PR-AUC.
 7. **Discount economics** — expected-value targeting of the 20% offer.
 
-## 🚀 Results (holdout, sorted by ROC-AUC)
+<!-- current:start -->
+## ✅ Current status
+
+**Deployed: XGB v2 (sigmoid calibration).** Holdout PR-AUC **0.360**, ROC-AUC 0.712. Targeted 20% discount (profit threshold 0.21, positive margin only): ~1,268 customers offered, ~528 churners retained if all accept (churn 9.9% → 6.6%), **~64,259/yr** vs no action and ~289,242/yr vs a blanket offer. If only half of would-be churners accept while every stayer does, uplift falls to ~14,842/yr. Verification set: 289 of 4,024 customers flagged at the all-data profit threshold 0.23. History: v1 bake-off (Random Forest) → v2 tuning (XGBoost) → v3 Tier-1 tests found no significant gain, so XGB v2 stays; its calibration moved to sigmoid.
+<!-- current:end -->
+
+## 🚀 v1 results (holdout, sorted by ROC-AUC)
 | Model | ROC-AUC | PR-AUC | F1 | Precision | Recall |
 |-------|---------|--------|-----|-----------|--------|
 | **Random Forest** | **0.699** | 0.264 | 0.19 | 0.43 | 0.12 |
@@ -61,6 +67,14 @@ offers the discount to ~1,316 customers, retains
 All three models improved on their v1 baseline.
 Full table: `outputs/tuning_results.csv`. Re-run: `python src/run_tuning.py`.
 <!-- v2-tuning:end -->
+
+<!-- v3:start -->
+## 🧪 v3 — Tier-1 improvements (repeated CV, pre-registered rule)
+
+Top CV candidate Blend native not adopted: its CV gain of +0.0071 is not significant (Holm p=1.00, 95% CI -0.0038 to +0.0180). Calibration was chosen by cross-fitted profit on training data only: sigmoid 29,615 vs isotonic 28,856 (training-fold uplift). On the holdout the old isotonic version earns 2,862/yr more — the two sources disagree, both gaps are small, and the rule was fixed before the holdout was seen, so it stands. Sigmoid keeps every customer's score distinct (4,024 vs 48 under isotonic), so the ranked list the brief asks for is exact (holdout PR-AUC 0.360 vs 0.341). Full tables, the acceptance
+sensitivity and the data roadmap: `outputs/RESULTS.md` §10–12 and
+`outputs/report.html`. Re-run: `python src/run_v3.py`.
+<!-- v3:end -->
 
 ## 📁 Repository Structure
 - `data/raw/`: source CSVs — `data/processed/`: generated ABT

@@ -11,6 +11,20 @@ HERE = os.path.dirname(__file__)
 OUT = os.path.join(HERE, "..", "outputs")
 
 
+# Readable row labels for the v2-vs-v3 holdout comparison (report + docs).
+HOLDOUT_ROWS = [("PR-AUC", "PR_AUC", "{:.4f}"), ("ROC-AUC", "ROC_AUC", "{:.4f}"),
+                ("Brier (lower = better calibrated)", "Brier", "{:.4f}"),
+                ("Distinct scores (of 4,024)", "distinct_scores", "{:,.0f}"),
+                ("Profit threshold", "profit_threshold", "{:.2f}"),
+                ("Customers offered", "offered_full_pop", "{:,.0f}"),
+                ("Churners retained (all accept)", "retained_churners_full_pop", "{:,.0f}"),
+                ("Uplift vs no action /yr", "uplift_vs_no_action_full_pop", "{:,.0f}"),
+                ("Uplift vs blanket /yr", "uplift_vs_blanket_full_pop", "{:,.0f}")]
+
+THRESHOLD_NOTE = ("Thresholds are chosen empirically on training data, so they can sit "
+                  "slightly off the theoretical break-even.")
+
+
 def _load_json(name):
     p = os.path.join(OUT, name)
     return json.load(open(p)) if os.path.exists(p) else None
@@ -29,6 +43,24 @@ def scenario(v3, label_prefix):
         if s["scenario"].startswith(label_prefix):
             return s
     raise KeyError(label_prefix)
+
+
+def worst_case_sentence(v3):
+    """Plain-English break-even for the worst case (every stayer accepts)."""
+    wc = v3["acceptance_worst_case"]
+    lo, hi = wc["tested_range"]
+    if wc["profitable_across_tested_range"]:
+        return (f"Even when every stayer accepts, targeting stays profitable across the "
+                f"whole tested range ({lo:.0%}–{hi:.0%} churner acceptance).")
+    curve = pd.read_csv(os.path.join(OUT, "acceptance_curve.csv"))
+    w = curve[curve["family"] == "stayers_all"].sort_values("a_churn")
+    bad = wc["highest_unprofitable_churner_acceptance"]
+    ok = w[(w["a_churn"] > bad + 1e-9) & (w["uplift_vs_no_action"] > 0)]["a_churn"]
+    first_ok = float(ok.min()) if len(ok) else None
+    tail = (f"it stays profitable once at least ~{first_ok:.0%} of would-be churners accept"
+            if first_ok is not None else "it does not pay at any tested acceptance level")
+    return (f"If every stayer accepts, targeting stops paying when only {bad:.0%} of "
+            f"would-be churners accept; {tail}.")
 
 
 def price_feature_rank():
@@ -105,7 +137,7 @@ def current_status(v1, v2, v3):
     if v3:
         h = v3["holdout_v3"]; a = scenario(v3, "All accept"); w = scenario(v3, "Churners 50%")
         base = base_churn_rate()
-        rescored = (f"{v3['test_flagged_to_churn']:,} of 4,024 verification customers flagged "
+        rescored = (f"{v3['test_flagged_to_churn']:,} of 4,024 customers flagged "
                     f"at the all-data profit threshold {v3['profit_threshold_all_data']:.2f}"
                     if v3["test_rescored"] else "verification set scored by the v2 model")
         return (

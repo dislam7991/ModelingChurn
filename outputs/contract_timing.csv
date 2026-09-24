@@ -1,0 +1,10 @@
+feature,bucket,churn_rate,customers,lift_vs_overall,chi2_p_value
+months_to_end,0-3,0.10634,3075,1.07315,0.15623
+months_to_end,3-6,0.10124,3872,1.02166,0.15623
+months_to_end,6-9,0.09096,3639,0.91792,0.15623
+months_to_end,9-12,0.09632,4516,0.97206,0.15623
+months_to_end,12+,0.11089,992,1.11902,0.15623
+months_to_renewal,6+ ago,0.10449,6986,1.05451,0.11223
+months_to_renewal,3-6 ago,0.09189,3722,0.92727,0.11223
+months_to_renewal,0-3 ago,0.0955,4398,0.96372,0.11223
+months_to_renewal,0-3 ahead,0.10842,950,1.09413,0.11223

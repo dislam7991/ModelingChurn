@@ -1,0 +1,3 @@
+model,calibration,PR_AUC,ROC_AUC,Brier,distinct_scores,profit_threshold,precision_offered,recall_offered,offered_full_pop,retained_churners_full_pop,uplift_vs_no_action_full_pop,uplift_vs_blanket_full_pop
+"XGB v2 (as deployed in v2, isotonic)",isotonic,0.34124,0.70936,0.07652,48,0.16,0.41033,0.33835,1316,540,67121.112,292104.0
+XGB v2 (sigmoid),sigmoid,0.36023,0.71222,0.07809,4024,0.21,0.4164,0.33083,1268,528,64259.096,289241.984

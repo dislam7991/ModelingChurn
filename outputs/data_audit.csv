@@ -1,0 +1,7 @@
+signal,fields_found,usable
+Churn reason (switch vs closure/move),none,False
+Payment behaviour,none,False
+Customer contact / complaints,none,False
+Smart-meter interval usage,none,False
+Competitor price benchmark,none,False
+Campaign / offer response,campaign_disc_ele (0% populated),False

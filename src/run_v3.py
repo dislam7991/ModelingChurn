@@ -219,14 +219,15 @@ def fig_acceptance(curve):
     fig, ax = plt.subplots(figsize=(7.5, 4.5)); _style(ax, grid_axis="y")
     series = [("symmetric", "Churners and stayers accept at the same rate", BLUE),
               ("stayers_all", "Stayers always accept (worst case)", ORANGE)]
-    for (key, label, col), dy in zip(series, (10, -14)):
+    # Blue label above-left of its line, orange below-right of its line.
+    for (key, label, col), (dx, dy, ha) in zip(series, ((-6, 8, "right"), (6, -12, "left"))):
         c = curve[curve["family"] == key].set_index("a_churn")
         ax.plot(c.index, c["uplift_vs_no_action"] / 1e3, color=col, lw=2,
                 marker="o", ms=5, label=label)
         # Direct label where the two lines are well apart (they meet at 1.0).
         v = c.loc[0.5, "uplift_vs_no_action"] / 1e3
-        ax.annotate(f"{v:,.0f}k at 50%", (0.5, v), xytext=(0, dy), textcoords="offset points",
-                    ha="center", fontsize=8, color=INK)
+        ax.annotate(f"{v:,.0f}k at 50%", (0.5, v), xytext=(dx, dy), textcoords="offset points",
+                    ha=ha, va="center", fontsize=8, color=INK)
     end = curve[curve["family"] == "symmetric"].set_index("a_churn").loc[1.0, "uplift_vs_no_action"] / 1e3
     ax.annotate(f"{end:,.0f}k if all accept\n(the brief's assumption)", xy=(1.0, end),
                 xytext=(0.58, end * 0.89), textcoords="data", ha="left", va="center",

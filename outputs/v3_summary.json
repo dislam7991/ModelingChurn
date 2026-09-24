@@ -1,0 +1,162 @@
+{
+  "decision_rule": "Deploy the top mean-CV-PR-AUC candidate only if it beats XGB v2 with Holm-adjusted p < 0.05 (Nadeau-Bengio corrected paired t-test, repeated 5x5 CV) and is not worse on the holdout.",
+  "cv_splits": 25,
+  "top_cv_candidate": "Blend native",
+  "deployed_config": "XGB v2",
+  "decision_reason": "Top CV candidate Blend native not adopted: its CV gain of +0.0071 is not significant (Holm p=1.00, 95% CI -0.0038 to +0.0180).",
+  "calibration": "sigmoid",
+  "calibration_reason": "chosen by cross-fitted profit on train OOF predictions",
+  "holdout_v2_as_deployed": {
+    "model": "XGB v2 (as deployed in v2, isotonic)",
+    "calibration": "isotonic",
+    "PR_AUC": 0.34123745459673055,
+    "ROC_AUC": 0.7093644455967505,
+    "Brier": 0.0765179917216301,
+    "distinct_scores": 48,
+    "profit_threshold": 0.16,
+    "precision_offered": 0.41033434650455924,
+    "recall_offered": 0.3383458646616541,
+    "offered_full_pop": 1316,
+    "retained_churners_full_pop": 540,
+    "uplift_vs_no_action_full_pop": 67121.11199999973,
+    "uplift_vs_blanket_full_pop": 292104.0
+  },
+  "holdout_v3": {
+    "model": "XGB v2 (sigmoid)",
+    "calibration": "sigmoid",
+    "PR_AUC": 0.36023260496139375,
+    "ROC_AUC": 0.7122198599948146,
+    "Brier": 0.07808557105048276,
+    "distinct_scores": 4024,
+    "profit_threshold": 0.21,
+    "precision_offered": 0.416403785488959,
+    "recall_offered": 0.3308270676691729,
+    "offered_full_pop": 1268,
+    "retained_churners_full_pop": 528,
+    "uplift_vs_no_action_full_pop": 64259.09599999944,
+    "uplift_vs_blanket_full_pop": 289241.9839999997
+  },
+  "acceptance_worst_case": {
+    "tested_range": [
+      0.05,
+      1.0
+    ],
+    "profitable_across_tested_range": false,
+    "highest_unprofitable_churner_acceptance": 0.05,
+    "uplift_at": {
+      "0.25": 7075.383999999613,
+      "0.50": 14842.415999999736,
+      "0.75": 28047.70399999991,
+      "1.00": 64259.09599999944
+    }
+  },
+  "acceptance_scenarios": [
+    {
+      "scenario": "All accept (brief's assumption)",
+      "a_churn": 1.0,
+      "a_stay": 1.0,
+      "breakeven_p": 0.2,
+      "threshold": 0.21,
+      "offered": 1268,
+      "expected_retained_churners": 528.0,
+      "churn_rate_after": 0.06635188866799205,
+      "uplift_vs_no_action": 64259.09599999944,
+      "blanket_vs_no_action": -224982.88800000027,
+      "uplift_vs_blanket": 289241.9839999997
+    },
+    {
+      "scenario": "75% of everyone accepts",
+      "a_churn": 0.75,
+      "a_stay": 0.75,
+      "breakeven_p": 0.2,
+      "threshold": 0.21,
+      "offered": 1268,
+      "expected_retained_churners": 396.0,
+      "churn_rate_after": 0.07455268389662027,
+      "uplift_vs_no_action": 48194.32200000016,
+      "blanket_vs_no_action": -168737.16599999974,
+      "uplift_vs_blanket": 216931.4879999999
+    },
+    {
+      "scenario": "50% of everyone accepts",
+      "a_churn": 0.5,
+      "a_stay": 0.5,
+      "breakeven_p": 0.2,
+      "threshold": 0.21,
+      "offered": 1268,
+      "expected_retained_churners": 264.0,
+      "churn_rate_after": 0.08275347912524851,
+      "uplift_vs_no_action": 32129.54799999995,
+      "blanket_vs_no_action": -112491.44400000013,
+      "uplift_vs_blanket": 144620.9920000001
+    },
+    {
+      "scenario": "25% of everyone accepts",
+      "a_churn": 0.25,
+      "a_stay": 0.25,
+      "breakeven_p": 0.2,
+      "threshold": 0.21,
+      "offered": 1268,
+      "expected_retained_churners": 132.0,
+      "churn_rate_after": 0.09095427435387674,
+      "uplift_vs_no_action": 16064.773999999743,
+      "blanket_vs_no_action": -56245.72200000007,
+      "uplift_vs_blanket": 72310.49599999981
+    },
+    {
+      "scenario": "Churners 75%, stayers 100%",
+      "a_churn": 0.75,
+      "a_stay": 1.0,
+      "breakeven_p": 0.25,
+      "threshold": 0.26,
+      "offered": 792,
+      "expected_retained_churners": 303.0,
+      "churn_rate_after": 0.08033051689860835,
+      "uplift_vs_no_action": 28047.70399999991,
+      "blanket_vs_no_action": -323536.35199999996,
+      "uplift_vs_blanket": 351584.05599999987
+    },
+    {
+      "scenario": "Churners 50%, stayers 100%",
+      "a_churn": 0.5,
+      "a_stay": 1.0,
+      "breakeven_p": 0.3333333333333333,
+      "threshold": 0.33,
+      "offered": 428,
+      "expected_retained_churners": 142.0,
+      "churn_rate_after": 0.09033300198807157,
+      "uplift_vs_no_action": 14842.415999999736,
+      "blanket_vs_no_action": -422089.8160000001,
+      "uplift_vs_blanket": 436932.23199999984
+    },
+    {
+      "scenario": "Churners 25%, stayers 100%",
+      "a_churn": 0.25,
+      "a_stay": 1.0,
+      "breakeven_p": 0.5,
+      "threshold": 0.41000000000000003,
+      "offered": 276,
+      "expected_retained_churners": 56.0,
+      "churn_rate_after": 0.09567594433399602,
+      "uplift_vs_no_action": 7075.383999999613,
+      "blanket_vs_no_action": -520643.28000000026,
+      "uplift_vs_blanket": 527718.6639999999
+    }
+  ],
+  "top_features": [
+    "margin_net_pow_ele",
+    "margin_gross_pow_ele",
+    "pow_max",
+    "months_to_end",
+    "months_to_renewal",
+    "net_margin",
+    "cons_last_month",
+    "forecast_meter_rent_12m",
+    "cons_gas_12m",
+    "net_margin_per_cons"
+  ],
+  "test_rescored": true,
+  "test_flagged_to_churn": 289,
+  "profit_threshold_all_data": 0.23,
+  "runtime_minutes": 7.4
+}
